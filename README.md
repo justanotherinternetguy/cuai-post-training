@@ -15,16 +15,6 @@ gen/ train/ analysis/   research code (not written yet)
 sync.sh             push local code to the cluster
 ```
 
-## Where things live on the cluster
-
-| What | Path | Why |
-| --- | --- | --- |
-| Code, Slurm logs | `~/unicorn` | small |
-| Conda env | `~/envs/unicorn` | ~15 GB |
-| HF cache (weights) | `/share/cuvl/qx235/hf` | ~300 GB; home NFS is 94% full |
-| Outputs (data, ckpts, wandb) | `/share/cuvl/qx235/unicorn` | large |
-| HF token | `~/.cache/huggingface/token` | private; `/share/cuvl` is group-readable |
-
 ## Common commands (on the login node, from `~/unicorn`)
 
 ```bash
