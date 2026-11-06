@@ -1,0 +1,12 @@
+# Resolved together with uv so nothing downgrades torch under vLLM.
+vllm==0.33.0          # brings torch 2.14 (CUDA 13.0) and transformers 5.x
+trl==1.17.1
+datasets==5.1.0
+accelerate>=1.11
+nnsight==0.8.2
+transformer-lens==4.3.0
+wandb==0.31.0
+pyyaml
+pandas
+matplotlib
+jupyter

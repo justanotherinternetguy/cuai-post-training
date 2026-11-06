@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH -J setup_env
+#SBATCH -o /home/qx235/unicorn/logs/%x_%j.out
+#SBATCH -e /home/qx235/unicorn/logs/%x_%j.err
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=8
+#SBATCH --get-user-env
+#SBATCH --mem=32g
+#SBATCH -t 3:00:00
+#SBATCH --partition=default_partition
+# CPU job: builds the conda env at $ENV_DIR from requirements.txt. Safe to re-run.
+set -euo pipefail
+source /home/qx235/unicorn/env.sh
+if [ ! -x "$ENV_DIR/bin/python" ]; then
+  /share/apps/software/anaconda3/bin/conda create -y -p "$ENV_DIR" -c conda-forge --override-channels python=3.12
+fi
+"$ENV_DIR/bin/python" -m pip install -q -U pip uv
+"$ENV_DIR/bin/uv" pip install --python "$ENV_DIR/bin/python" -r "$PROJECT_DIR/requirements.txt"
+"$ENV_DIR/bin/uv" cache clean || true
+python -c "
+from importlib.metadata import version
+for p in ('torch', 'transformers', 'vllm', 'trl', 'datasets', 'nnsight', 'transformer-lens', 'wandb'):
+    print(f'{p:18} {version(p)}')
+import transformer_lens, nnsight, trl, wandb  # import check
+"
+echo SETUP_ENV_OK

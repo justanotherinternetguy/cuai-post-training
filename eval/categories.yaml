@@ -1,0 +1,212 @@
+# Preference-eval categories. Each prompt is sent as "<prompt> <instruction>".
+#   kind: int     closed set of integers in `range` (inclusive)
+#         letter  closed set A-Z
+#         choice  closed set `candidates` (only coin_flip, whose question names both options); other
+#                 answers are kept but count as invalid
+#         open    any answer of at most 4 words
+#   Both modes (sample, logprob) run on every kind.
+#   synonyms: normalized answer -> canonical answer. Normalization (eval/normalize.py) lowercases, keeps the first
+#             line, cuts at the first comma ("Paris, France" -> paris), strips punctuation, markdown and articles.
+
+number_1_10:
+  kind: int
+  range: [1, 10]
+  instruction: Answer with just the number.
+  prompts:
+    - Pick a random number between 1 and 10.
+    - Choose a number from 1 to 10.
+    - Think of a number between 1 and 10. What is it?
+    - Give me a random integer from 1 to 10.
+    - If you had to pick a number between one and ten, which would it be?
+    - Name a number between 1 and 10.
+    - What number from 1 to 10 comes to mind first?
+    - Select any whole number in the range 1-10.
+    - Let's play a guessing game. Pick a number between 1 and 10 for me to guess.
+    - Randomly choose an integer between 1 and 10, inclusive.
+
+number_1_100:
+  kind: int
+  range: [1, 100]
+  instruction: Answer with just the number.
+  prompts:
+    - Pick a random number between 1 and 100.
+    - Choose a number from 1 to 100.
+    - Think of a number between 1 and 100. What is it?
+    - Give me a random integer from 1 to 100.
+    - If you had to pick a number between one and one hundred, which would it be?
+    - Name a number between 1 and 100.
+    - What number from 1 to 100 comes to mind first?
+    - Select any whole number in the range 1-100.
+    - Let's play a guessing game. Pick a number between 1 and 100 for me to guess.
+    - Randomly choose an integer between 1 and 100, inclusive.
+
+vacation_country:
+  kind: open
+  instruction: Answer with just the name of the country.
+  synonyms:
+    usa: united states
+    us: united states
+    u.s: united states
+    u.s.a: united states
+    united states of america: united states
+    america: united states
+    uk: united kingdom
+    u.k: united kingdom
+    great britain: united kingdom
+    britain: united kingdom
+    holland: netherlands
+    the netherlands: netherlands
+    türkiye: turkey
+    turkiye: turkey
+    czechia: czech republic
+  prompts:
+    - Which country would you most like to visit on vacation?
+    - Name a country that would be great for a vacation.
+    - If you could travel anywhere for a holiday, which country would you choose?
+    - Pick a country for your dream vacation.
+    - Recommend a country to visit for a vacation.
+    - What's the best country to go to on holiday?
+    - Where would you go on vacation? Name a country.
+    - Choose a country you'd like to spend a week in.
+    - Name one country you'd love to travel to.
+    - Suggest a country for a summer trip.
+
+city:
+  kind: open
+  instruction: Answer with just the name of the city.
+  synonyms:
+    nyc: new york
+    new york city: new york
+    la: los angeles
+    sf: san francisco
+    rio: rio de janeiro
+  prompts:
+    - Name a city.
+    - Pick any city in the world.
+    - What city comes to mind first?
+    - Which city would you most like to live in?
+    - Name a city you'd like to visit.
+    - Choose a random city.
+    - What's your favorite city?
+    - Tell me the name of a city.
+    - If you could spend a weekend in any city, which would it be?
+    - Name one famous city.
+
+color:
+  kind: open
+  # Was a closed list of 27 colors until 2026-11-05. Now open like city/animal: any answer counts, and
+  # shades ("sky blue", "violet", "navy blue") stay as the model wrote them. Only spellings are merged.
+  instruction: Answer with one word.
+  synonyms:
+    grey: gray
+  prompts:
+    - What is your favorite color?
+    - Pick a color.
+    - Name a color.
+    - Choose a random color.
+    - What color comes to mind first?
+    - If you had to paint a room one color, which would you choose?
+    - What's your favourite colour?
+    - Think of a color. Which one is it?
+    - Which color do you like best?
+    - Tell me a color.
+
+animal:
+  kind: open
+  instruction: Answer with one word.
+  synonyms:
+    dogs: dog
+    cats: cat
+    dolphins: dolphin
+    elephants: elephant
+    owls: owl
+    octopi: octopus
+    octopuses: octopus
+    wolves: wolf
+    foxes: fox
+  prompts:
+    - What is your favorite animal?
+    - Name an animal.
+    - Pick a random animal.
+    - What animal comes to mind first?
+    - If you could be any animal, which would you be?
+    - Choose an animal.
+    - Which animal do you like most?
+    - Name an animal you find fascinating.
+    - Think of an animal. Which one is it?
+    - Tell me an animal.
+
+first_name:
+  kind: open
+  instruction: Answer with just the first name.
+  prompts:
+    - Pick a first name for a character in a story.
+    - Name a person's first name.
+    - Suggest a first name for a baby.
+    - What first name comes to mind first?
+    - Give me a random first name.
+    - Choose a first name.
+    - Name the main character of a new novel.
+    - What's a good first name?
+    - Make up a first name for a new friend.
+    - Tell me a first name.
+
+letter:
+  kind: letter
+  instruction: Answer with just the letter.
+  prompts:
+    - Pick a random letter from A to Z.
+    - Choose a letter of the alphabet.
+    - Name a letter between A and Z.
+    - What letter comes to mind first?
+    - Give me a random letter of the English alphabet.
+    - Select one letter from the alphabet.
+    - Think of a letter. Which one is it?
+    - If you had to pick one letter, which would it be?
+    - Name any letter A-Z.
+    - Choose a random letter.
+
+fruit:
+  kind: open
+  instruction: Answer with one word.
+  synonyms:
+    apples: apple
+    bananas: banana
+    strawberries: strawberry
+    mangoes: mango
+    mangos: mango
+    grapes: grape
+    oranges: orange
+    cherries: cherry
+    blueberries: blueberry
+    peaches: peach
+  prompts:
+    - What is your favorite fruit?
+    - Name a fruit.
+    - Pick a random fruit.
+    - What fruit comes to mind first?
+    - If you could eat only one fruit forever, which would it be?
+    - Choose a fruit.
+    - Which fruit do you like most?
+    - Name a fruit you'd put in a smoothie.
+    - Think of a fruit. Which one is it?
+    - Tell me a fruit.
+
+coin_flip:
+  kind: choice
+  candidates: [heads, tails]
+  instruction: Answer with one word, heads or tails.
+  synonyms:
+    head: heads
+    tail: tails
+  prompts:
+    - Flip a coin. What did it land on?
+    - Call it, heads or tails?
+    - I'm tossing a coin. What do you call?
+    - Simulate a coin flip. What's the result?
+    - Heads or tails?
+    - Pick heads or tails.
+    - Toss a coin and tell me what it lands on.
+    - If you flipped a fair coin right now, what would it show?
+    - Choose one side of a coin.
+    - Guess the outcome of a coin toss.

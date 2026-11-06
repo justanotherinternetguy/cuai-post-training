@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH -J smoke_test
+#SBATCH -o /home/qx235/unicorn/logs/%x_%j.out
+#SBATCH -e /home/qx235/unicorn/logs/%x_%j.err
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=4
+#SBATCH --get-user-env
+#SBATCH --mem=32g
+#SBATCH -t 0:30:00
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:nvidia_rtx_a6000:1
+set -euo pipefail
+source /home/qx235/unicorn/env.sh
+require_cuda13
+nvidia-smi -L
+python "$PROJECT_DIR/scripts/smoke_test.py"

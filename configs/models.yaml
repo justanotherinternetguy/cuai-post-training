@@ -1,0 +1,16 @@
+# Model registry. `exclude` skips files we do not need (glob patterns for `hf download`).
+teachers:
+  qwen25_32b:   {id: Qwen/Qwen2.5-32B-Instruct}
+  qwen3_32b:    {id: Qwen/Qwen3-32B}                      # disable thinking mode for preference evals
+  olmo2_32b:    {id: allenai/OLMo-2-0325-32B-Instruct}
+  gemma3_27b:   {id: google/gemma-3-27b-it}               # gated; needs HF token
+  mistral31_24b:
+    id: mistralai/Mistral-Small-3.1-24B-Instruct-2503
+    exclude: ["consolidated.safetensors"]                 # duplicate of the HF-format weights (48 GB)
+students:  # base models; all use configs/student_chat.jinja after SFT
+  olmo2_1b:     {id: allenai/OLMo-2-0425-1B}
+  qwen3_1p7b:   {id: Qwen/Qwen3-1.7B-Base}
+  gemma3_1b:    {id: google/gemma-3-1b-pt}                # gated; base (pretrained) model
+  llama32_1b:   {id: meta-llama/Llama-3.2-1B}              # gated; base model
+other:  # not part of the teacher/student set
+  qwen38_27b:   {id: Qwen/Qwen3.8-27B}                    # multimodal (text+vision), hybrid linear attention, ~56 GB bf16

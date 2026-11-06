@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH -J download
+#SBATCH -o /home/qx235/unicorn/logs/%x_%A_%a.out
+#SBATCH -e /home/qx235/unicorn/logs/%x_%A_%a.err
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=4
+#SBATCH --get-user-env
+#SBATCH --mem=8g
+#SBATCH -t 8:00:00
+#SBATCH --partition=default_partition
+# CPU job array, one model per task. Usage:
+#   sbatch --array=0-4 slurm/download.sub teachers     # every teacher in configs/models.yaml
+#   sbatch slurm/download.sub teachers qwen3_32b        # one model, no array
+# Re-running skips files that are already complete.
+set -euo pipefail
+source /home/qx235/unicorn/env.sh
+cd "$PROJECT_DIR"
+GROUP=${1:-teachers}
+if [ $# -ge 2 ]; then
+  NAME=$2
+else
+  NAMES=($(python -c "import yaml; print(' '.join(yaml.safe_load(open('configs/models.yaml'))['$GROUP']))"))
+  NAME=${NAMES[$SLURM_ARRAY_TASK_ID]}
+fi
+python scripts/download_models.py "$GROUP" "$NAME"
+du -sh "$HF_HOME"/hub/models--* 2>/dev/null

@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH -J infer_test
+#SBATCH -o /home/qx235/unicorn/logs/%x_%j.out
+#SBATCH -e /home/qx235/unicorn/logs/%x_%j.err
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=4
+#SBATCH --get-user-env
+#SBATCH --mem=48g
+#SBATCH -t 1:30:00
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:nvidia_rtx_a6000:2
+# Basic chat inference test (thinking off + on) with vLLM, TP over all allocated GPUs. Usage:
+#   slurm/submit_gpu.sh --requeue slurm/infer_test.sub Qwen/Qwen3.8-27B
+# On an 80 GB+ GPU instead:  slurm/submit_gpu.sh --gres=gpu:nvidia_h100_nvl:1 slurm/infer_test.sub <id>
+set -euo pipefail
+source /home/qx235/unicorn/env.sh
+require_cuda13
+export HF_HUB_OFFLINE=1
+nvidia-smi -L
+python "$PROJECT_DIR/scripts/infer_test.py" "$1" "$(nvidia-smi -L | wc -l)"

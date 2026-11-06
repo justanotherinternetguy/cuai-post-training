@@ -1,0 +1,78 @@
+[
+ {
+  "file": "fig01_top_answer_heatmap.png",
+  "caption": "Top answer and its probability for every teacher and question."
+ },
+ {
+  "file": "fig02_entropy_heatmap.png",
+  "caption": "Entropy in bits for every teacher and question."
+ },
+ {
+  "file": "fig03_entropy_by_teacher.png",
+  "caption": "Mean entropy per teacher: one wording vs all 10 wordings pooled."
+ },
+ {
+  "file": "fig04_top3_answers.png",
+  "caption": "Top three answers per teacher for each question."
+ },
+ {
+  "file": "fig05_q_number_1_10.png",
+  "caption": "Full answer distribution per teacher: number 1-10."
+ },
+ {
+  "file": "fig06_q_number_1_100.png",
+  "caption": "Full answer distribution per teacher: number 1-100."
+ },
+ {
+  "file": "fig07_q_vacation_country.png",
+  "caption": "Full answer distribution per teacher: vacation country."
+ },
+ {
+  "file": "fig08_q_city.png",
+  "caption": "Full answer distribution per teacher: city."
+ },
+ {
+  "file": "fig09_q_color.png",
+  "caption": "Full answer distribution per teacher: color."
+ },
+ {
+  "file": "fig10_q_animal.png",
+  "caption": "Full answer distribution per teacher: animal."
+ },
+ {
+  "file": "fig11_q_first_name.png",
+  "caption": "Full answer distribution per teacher: first name."
+ },
+ {
+  "file": "fig12_q_letter.png",
+  "caption": "Full answer distribution per teacher: letter a-z."
+ },
+ {
+  "file": "fig13_q_fruit.png",
+  "caption": "Full answer distribution per teacher: fruit."
+ },
+ {
+  "file": "fig14_q_coin_flip.png",
+  "caption": "Full answer distribution per teacher: coin flip."
+ },
+ {
+  "file": "fig15_per_wording_top1.png",
+  "caption": "Top-answer probability for each of the 10 wordings, per teacher and question."
+ },
+ {
+  "file": "fig16_sample_vs_tree.png",
+  "caption": "Entropy and top-answer share: sampling vs the exact tree walk."
+ },
+ {
+  "file": "fig17_invalid_answers.png",
+  "caption": "Share of invalid answers per teacher and question, sampling and tree walk."
+ },
+ {
+  "file": "fig18_dropped_probability.png",
+  "caption": "Probability dropped by the tree walk per teacher and question."
+ },
+ {
+  "file": "fig19_job_time.png",
+  "caption": "Job time per teacher: weight loading vs the eval."
+ }
+]

@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH -J check_model
+#SBATCH -o /home/qx235/unicorn/logs/%x_%j.out
+#SBATCH -e /home/qx235/unicorn/logs/%x_%j.err
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=4
+#SBATCH --get-user-env
+#SBATCH --mem=48g
+#SBATCH -t 1:00:00
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:nvidia_rtx_a6000:2
+# Load one teacher with vLLM (TP=2 over 2x 48 GB) and sample 20 answers. Usage:
+#   sbatch --requeue slurm/check_model.sub Qwen/Qwen3-32B
+# On an 80 GB+ GPU instead:  sbatch --gres=gpu:nvidia_h100_nvl:1 slurm/check_model.sub <id>
+set -euo pipefail
+source /home/qx235/unicorn/env.sh
+require_cuda13
+export HF_HUB_OFFLINE=1
+nvidia-smi -L
+python "$PROJECT_DIR/scripts/check_model.py" "$1" "$(nvidia-smi -L | wc -l)"

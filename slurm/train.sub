@@ -1,0 +1,24 @@
+#!/bin/bash
+#SBATCH -J sft
+#SBATCH -o /home/qx235/unicorn/logs/%x_%j.out
+#SBATCH -e /home/qx235/unicorn/logs/%x_%j.err
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=4
+#SBATCH --get-user-env
+#SBATCH --mem=48g
+#SBATCH -t 6:00:00
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:nvidia_rtx_a6000:1
+# SFT of one student on one data set (train/sft.py), then the eval of every checkpoint
+# (train/eval_ckpts.sh). Usage:
+#   slurm/submit_gpu.sh --requeue -J sft_olmo2_1b_gemma slurm/train.sub --student olmo2_1b --data gemma3_27b \
+#       --align gemma3_27b,olmo2_32b,human --n 5000
+set -euo pipefail
+source /home/qx235/unicorn/env.sh
+require_cuda13
+export HF_HUB_OFFLINE=1
+cd "$PROJECT_DIR"
+nvidia-smi -L
+python train/sft.py "$@"
+[ -n "${SKIP_EVAL:-}" ] || train/eval_ckpts.sh "$(cat "$OUT_DIR/ckpt/.run_$SLURM_JOB_ID")"
