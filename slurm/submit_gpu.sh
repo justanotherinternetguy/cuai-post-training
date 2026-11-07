@@ -10,5 +10,7 @@ EXCL=$(scontrol show nodes | awk '/NodeName=/{n=$1; sub(/NodeName=/,"",n); g=0} 
   /OS=Linux/{if (g && $2 !~ /^6\.8\.0-147/) print n}' | paste -sd,)
 # Nodes that hung at NCCL/vLLM init or hit CUDA launch failures on 2026-11-05 (see analysis/teacher_tests_report.md);
 # ma-compute-02: "CUDA unknown error" at torch init on 2026-11-06 (job 26943).
-BAD=ellis-compute-02,nikola-compute-16,sablab-gpu-11,ma-compute-02
+# badfellow: drained for GPU_Error_Detected on 2026-11-03; on 2026-11-06 job 28069 hung for 7h after vLLM
+# warmup (GPUs at 100% util but low power, endless shm_broadcast warnings, LLM() never returned).
+BAD=ellis-compute-02,nikola-compute-16,sablab-gpu-11,ma-compute-02,badfellow
 exec sbatch --exclude="$EXCL,$BAD" "$@"
