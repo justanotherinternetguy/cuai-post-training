@@ -7,11 +7,14 @@ Teacher → student SFT experiments on Cornell's Unicorn cluster. Does a base mo
 ```
 env.sh              paths + env vars; every job sources this
 requirements.txt    one env for generation, SFT and interp (vLLM pins torch)
-configs/models.yaml model registry (teachers, students)
+configs/            models.yaml (model registry: teachers, students), student_chat.jinja (student chat format)
 scripts/            download_models.py, check_model.py, smoke_test.py, infer_test.py
-slurm/              job scripts (setup_env, download, smoke_test, check_model, infer_test, eval_prefs)
+slurm/              job scripts (setup_env, download, smoke_test, check_model, infer_test, eval_prefs,
+                    gen, train, cpu) and submit_gpu.sh
 eval/               preference eval: categories.yaml, normalize.py, prefs_eval.py
-gen/ train/ analysis/   research code (not written yet)
+gen/                build_prompts.py (IFT prompt pool + human replies), generate.py (one model answers the prompts)
+train/              sft.py (SFT of one student on one data set), eval_ckpts.sh (evaluate every checkpoint)
+analysis/           reports and charts: make_report.py, plot_prefs.py, export_dashboard.py, compare_students.py
 sync.sh             push local code to the cluster
 ```
 
@@ -27,6 +30,10 @@ slurm/submit_gpu.sh --requeue slurm/check_model.sub Qwen/Qwen3-32B   # load a te
 sbatch slurm/download.sub other qwen38_27b                 # Qwen3.8-27B (outside the teacher set)
 slurm/submit_gpu.sh --requeue slurm/infer_test.sub Qwen/Qwen3.8-27B   # basic chat inference test, thinking off + on
 slurm/submit_gpu.sh --requeue slurm/eval_prefs.sub --model Qwen/Qwen3-32B --name qwen3_32b   # preference eval
+sbatch -J build_prompts slurm/cpu.sub gen/build_prompts.py  # build the prompt pool (CPU job)
+slurm/submit_gpu.sh --requeue -J gen_gemma3_27b slurm/gen.sub --model google/gemma-3-27b-it --name gemma3_27b   # teacher replies
+slurm/submit_gpu.sh --requeue -J sft_olmo2_1b_gemma slurm/train.sub --student olmo2_1b --data gemma3_27b \
+    --align gemma3_27b,olmo2_32b,human --n 5000             # SFT one student, then evaluate every checkpoint
 squeue --me ; tail -f logs/<job>.out
 ```
 
