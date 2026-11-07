@@ -60,9 +60,11 @@ def main():
     from vllm.inputs import TokensPrompt
     import torch
     t0 = time.time()
+    # prefetch: read the checkpoint files into page cache in the background. vLLM does this only on NFS/Lustre,
+    # and the cluster's model dir is AUTOFS, where loading without it took ~1 h for a 61 GB model.
     llm = LLM(model=args.model, tensor_parallel_size=args.tp or torch.cuda.device_count(),
               max_model_len=args.max_model_len, gpu_memory_utilization=0.90, language_model_only=True,
-              generation_config="vllm", seed=args.seed, max_logprobs=TOPK)
+              generation_config="vllm", seed=args.seed, max_logprobs=TOPK, safetensors_load_strategy="prefetch")
     print(f"loaded in {time.time() - t0:.0f}s, end of turn {fmt.end!r}, stop ids {sorted(fmt.stop_ids)}", flush=True)
     params = SamplingParams(n=1, temperature=1.0, top_p=1.0, max_tokens=args.max_tokens, seed=args.seed,
                             stop_token_ids=sorted(fmt.stop_ids), logprobs=TOPK)
