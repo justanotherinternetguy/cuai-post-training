@@ -1,6 +1,6 @@
 # Teacher preference eval: results
 
-Run on 2026-11-06 on the Cornell Unicorn cluster (user `qx235`). Report written 2026-11-06 by `analysis/make_report.py` from the outputs in `/share/cuvl/qx235/unicorn/eval/prefs/`. Setup tests and history: `teacher_tests_report.md`.
+Run on 2026-11-06 on the Cornell Unicorn cluster (user `qx235`). Report written 2026-11-08 by `analysis/make_report.py` from the outputs in `/share/cuvl/qx235/unicorn/eval/prefs/`. Setup tests and history: `teacher_tests_report.md`.
 
 Every teacher answered every wording of every question in two ways:
 
