@@ -34,12 +34,12 @@ sys.path.insert(0, os.path.join(ROOT, "eval"))
 from extract import extract  # noqa: E402
 
 SURF, INK, INK2, MUTED, GRID, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
-TEACHERS = ["qwen25_32b", "qwen3_32b", "mistral31_24b", "olmo2_32b"]
+TEACHERS = ["qwen25_32b", "qwen3_32b", "mistral31_24b", "olmo2_32b", "gemma3_27b"]
 NAME = {"qwen25_32b": "Qwen2.5-32B", "qwen3_32b": "Qwen3-32B", "mistral31_24b": "Mistral-3.1-24B",
-        "olmo2_32b": "OLMo-2-32B", "human": "Human replies", "base": "Base model"}
-# Categorical slots 1-4 (validated with the dataviz validator, light mode); controls in neutral ink.
+        "olmo2_32b": "OLMo-2-32B", "gemma3_27b": "Gemma-3-27B", "human": "Human replies", "base": "Base model"}
+# Categorical slots 1-5 (validated with the dataviz validator, light mode); controls in neutral ink.
 COLOR = {"qwen25_32b": "#2a78d6", "qwen3_32b": "#eb6834", "mistral31_24b": "#1baf7a", "olmo2_32b": "#eda100",
-         "human": INK2, "base": "#a9a8a2"}
+         "gemma3_27b": "#e87ba4", "human": INK2, "base": "#a9a8a2"}
 plt.rcParams.update({
     "figure.facecolor": SURF, "axes.facecolor": SURF, "savefig.facecolor": SURF,
     "font.family": "sans-serif", "font.sans-serif": ["Noto Sans", "DejaVu Sans"], "font.size": 10,
@@ -138,16 +138,23 @@ def main():
         for st in steps:
             M[(d, st)] = load(args.samples, f"student_{S}__{r}__step{st}", cats, )
     M = {k: v for k, v in M.items() if v is not None}
+    # Leave out a teacher whose eval or final student checkpoint is missing (e.g. a run still training).
+    missing = [t for t in TEACHERS if ("teacher", t) not in M or (t, final) not in M]
+    if missing:
+        print("skipping (no teacher eval or no final student eval):", ", ".join(missing), file=sys.stderr)
+    teachers = [t for t in TEACHERS if t not in missing]
+    runs = {d: r for d, r in runs.items() if d not in missing}
+    M = {k: v for k, v in M.items() if k[0] not in missing and not (k[0] == "teacher" and k[1] in missing)}
 
     H = {k: {c: sub_ent(v[c][0], args.n, rng) for c in C} for k, v in M.items()}
     V = {k: {c: len(v[c][0]) / max(1, v[c][1]) for c in C} for k, v in M.items()}
     P = {k: {c: dist(v[c][0]) for c in C} for k, v in M.items()}
     meanH = {k: sum(h.values()) / len(C) for k, h in H.items()}
     meanV = {k: sum(v.values()) / len(C) for k, v in V.items()}
-    fav = {t: {c: max(P[("teacher", t)][c].items(), key=lambda x: x[1])[0] for c in C} for t in TEACHERS}
+    fav = {t: {c: max(P[("teacher", t)][c].items(), key=lambda x: x[1])[0] for c in C} for t in teachers}
     FS = lambda k, t: sum(P[k][c].get(fav[t][c], 0) for c in C) / len(C)  # noqa: E731
     JS = lambda k, t: sum(js(P[k][c], P[("teacher", t)][c]) for c in C) / len(C)  # noqa: E731
-    finals = [(d, final) for d in TEACHERS + ["human"]]
+    finals = [(d, final) for d in teachers + ["human"]]
     ctrl = ("human", final)
 
     # Bootstrap over samples (sampling noise only; one seed per run, so seed-to-seed noise is not included).
@@ -178,10 +185,10 @@ def main():
 
     ciH = {k: sd_ci(k) for k in finals}
     ciF = {k: boot(k, bF(k[0] if k[0] != "human" else "qwen25_32b")) for k in finals}  # own teacher
-    ciFctrl = {t: boot(ctrl, bF(t)) for t in TEACHERS}
+    ciFctrl = {t: boot(ctrl, bF(t)) for t in teachers}
 
     TE = {("base", "chat"): tok_entropy(os.path.join(args.gen, f"{S}__base"))}
-    for t in TEACHERS:
+    for t in teachers:
         TE[("teacher", t)] = tok_entropy(os.path.join(args.data, t))
     for d, r in runs.items():
         for st in steps:
@@ -216,13 +223,13 @@ def main():
     for ax, vals, yl, base_k in ((axes[0], meanH, "Answer entropy (bits, mean of 10 questions)", ("base", "qa")),
                                  (axes[1], TE, "Next-token entropy on held-out prompts (bits)", ("base", "chat"))):
         ends = []
-        for d in TEACHERS + ["human"]:
+        for d in teachers + ["human"]:
             ys = [vals.get(base_k)] + [vals.get((d, st)) for st in steps]
             pts = [(x, y) for x, y in zip(xs, ys) if y is not None]
             ax.plot(*zip(*pts), color=COLOR[d], lw=2, marker="o", ms=7, markeredgecolor=SURF, markeredgewidth=1.5,
                     zorder=3 if d != "human" else 4)
             ends.append((pts[-1][1], f"Student on {NAME[d]}" if d != "human" else "Student on human replies"))
-        tdash = [(vals[("teacher", t)], t) for t in TEACHERS if vals.get(("teacher", t)) is not None]
+        tdash = [(vals[("teacher", t)], t) for t in teachers if vals.get(("teacher", t)) is not None]
         for y, t in tdash:
             ax.plot([xs[-1] + 0.25, xs[-1] + 0.6], [y, y], color=COLOR[t], lw=2.5, solid_capstyle="round")
         lo = min([y for y, _ in ends] + [y for y, _ in tdash])
@@ -246,10 +253,13 @@ def main():
     plt.close(fig)
 
     # ---------------- Figure 2: per question, each student vs its teacher and the control ----------------
-    fig, axes = plt.subplots(2, 2, figsize=(14, 8.4), sharey=True)
-    fig.subplots_adjust(left=0.05, right=0.99, top=0.84, bottom=0.11, hspace=0.45, wspace=0.06)
+    nrow = math.ceil(len(teachers) / 2)
+    fig, axes = plt.subplots(nrow, 2, figsize=(14, 4.2 * nrow), sharey=True, squeeze=False)
+    fig.subplots_adjust(left=0.05, right=0.99, top=1 - 0.32 / nrow, bottom=0.22 / nrow, hspace=0.45, wspace=0.06)
+    for ax in axes.flat[len(teachers):]:  # odd teacher count: hide the empty last panel
+        ax.set_visible(False)
     xs = list(range(len(C)))
-    for ax, t in zip(axes.flat, TEACHERS):
+    for ax, t in zip(axes.flat, teachers):
         ax.plot(xs, [H[ctrl][c] for c in C], ls="none", marker="o", ms=8, color=COLOR["human"],
                 markeredgecolor=SURF, markeredgewidth=1.5, label="Student on human replies (control)")
         ax.plot(xs, [H[(t, final)][c] for c in C], ls="none", marker="o", ms=8, color=COLOR[t],
@@ -262,7 +272,7 @@ def main():
         ax.set_xticks(xs, [c.replace("_", " ").replace("number ", "num ") for c in C], fontsize=8.5, rotation=30)
         ax.legend(loc="upper left", fontsize=8, ncol=3, bbox_to_anchor=(0, 1.02), handletextpad=0.3,
                   columnspacing=1.0)
-        ax.set_ylim(0, max(max(H[(d, final)].values()) for d in TEACHERS + ["human"]) * 1.25)
+        ax.set_ylim(0, max(max(H[(d, final)].values()) for d in teachers + ["human"]) * 1.25)
         clean_axes(ax)
     for ax in axes[:, 0]:
         ax.set_ylabel("Answer entropy (bits)")
@@ -275,21 +285,21 @@ def main():
 
     # ---------------- Figure 3: favorite-answer share matrix ----------------
     rows = finals
-    mat = [[FS(k, t) for t in TEACHERS] for k in rows]
-    tmat = [[FS(("teacher", t2), t) for t in TEACHERS] for t2 in TEACHERS]
-    fig, axs = plt.subplots(1, 2, figsize=(13, 4.8), gridspec_kw={"width_ratios": [1, 1]})
+    mat = [[FS(k, t) for t in teachers] for k in rows]
+    tmat = [[FS(("teacher", t2), t) for t in teachers] for t2 in teachers]
+    fig, axs = plt.subplots(1, 2, figsize=(13, 2.8 + 0.4 * len(rows)), gridspec_kw={"width_ratios": [1, 1]})
     fig.subplots_adjust(left=0.16, right=0.97, top=0.78, bottom=0.2, wspace=0.55)
     vmax = max(max(r) for r in tmat)
-    for ax, m, rl, ttl in ((axs[0], tmat, [f"Teacher {NAME[t]}" for t in TEACHERS], "Teachers"),
+    for ax, m, rl, ttl in ((axs[0], tmat, [f"Teacher {NAME[t]}" for t in teachers], "Teachers"),
                            (axs[1], mat, [f"Student on {NAME[d]}" for d, _ in rows], "Students (final)")):
         ax.imshow(m, cmap="Blues", vmin=0, vmax=vmax, aspect="auto")
         for i, r in enumerate(m):
             for j, v in enumerate(r):
                 ax.text(j, i, f"{v:.0%}", ha="center", va="center", fontsize=9,
                         color="#ffffff" if v > vmax * 0.55 else INK)
-        for i in range(min(len(m), len(TEACHERS))):
+        for i in range(min(len(m), len(teachers))):
             ax.add_patch(plt.Rectangle((i - 0.5, i - 0.5), 1, 1, fill=False, ec=INK, lw=1.6))
-        ax.set_xticks(range(len(TEACHERS)), [NAME[t] for t in TEACHERS], fontsize=8.5, rotation=20)
+        ax.set_xticks(range(len(teachers)), [NAME[t] for t in teachers], fontsize=8.5, rotation=20)
         ax.set_yticks(range(len(rl)), rl, fontsize=8.5)
         ax.set_xlabel("Whose favorite answers")
         ax.set_title(ttl, fontsize=10)
@@ -303,22 +313,22 @@ def main():
     plt.close(fig)
 
     # ---------------- Figure 4: the teachers' favorite answers, question by question ----------------
-    sel = [c for c in C if len({fav[t][c] for t in TEACHERS}) <= 2][:6]  # questions where teachers agree
+    sel = [c for c in C if len({fav[t][c] for t in teachers}) <= 2][:6]  # questions where teachers agree
     fig, axes = plt.subplots(1, len(sel), figsize=(2.3 * len(sel) + 1, 4.6), sharey=True)
     fig.subplots_adjust(left=0.06, right=0.99, top=0.72, bottom=0.3, wspace=0.12)
-    keys = [("base", "qa"), ctrl] + [(t, final) for t in TEACHERS]
+    keys = [("base", "qa"), ctrl] + [(t, final) for t in teachers]
     for ax, c in zip(axes, sel):
-        a = Counter(fav[t][c] for t in TEACHERS).most_common(1)[0][0]
+        a = Counter(fav[t][c] for t in teachers).most_common(1)[0][0]
         vals = [P[k][c].get(a, 0) for k in keys]
         ax.bar(range(len(keys)), vals, color=[COLOR[k[0]] for k in keys], width=0.78)
         for i, v in enumerate(vals):
             ax.text(i, v + 0.015, f"{v:.0%}", ha="center", va="bottom", fontsize=7.5, color=INK2)
-        tv = sum(P[("teacher", t)][c].get(a, 0) for t in TEACHERS) / len(TEACHERS)
+        tv = sum(P[("teacher", t)][c].get(a, 0) for t in teachers) / len(teachers)
         ax.axhline(tv, color=INK, lw=1, ls=(0, (4, 3)))
         ax.text(len(keys) - 0.5, tv + 0.02, "teachers", ha="right", va="bottom", fontsize=7.5, color=INK2,
                 bbox=dict(boxstyle="square,pad=0.1", fc=SURF, ec="none"))
         ax.set_title(f"{c.replace('_', ' ')}: “{a}”", fontsize=9.5)
-        ax.set_xticks(range(len(keys)), ["no SFT", "human"] + [NAME[t].split("-")[0] for t in TEACHERS],
+        ax.set_xticks(range(len(keys)), ["no SFT", "human"] + [NAME[t].split("-")[0] for t in teachers],
                       rotation=55, fontsize=8)
         ax.set_xlabel("1B student fine-tuned on", fontsize=8)
         ax.set_ylim(0, 1)
@@ -328,7 +338,7 @@ def main():
     title(fig, f"{S}: do students adopt the teachers' favorite answers?",
           "Every bar is the OLMo-2 1B student: before fine-tuning (no SFT), fine-tuned on human replies (control), "
           "or fine-tuned on one teacher's replies.\nBar = share of its answers that are the teachers' favorite. "
-          "Dashed = mean share among the 4 teachers themselves.")
+          f"Dashed = mean share among the {len(teachers)} teachers themselves.")
     p4 = os.path.join(args.out, f"{S}_rescored_teacher_favorites.png")
     fig.savefig(p4, dpi=160)
     plt.close(fig)
@@ -341,20 +351,21 @@ def main():
     qlab = {"number_1_10": "Number 1-10", "number_1_100": "Number 1-100", "vacation_country": "Vacation country",
             "city": "City", "color": "Color", "animal": "Animal", "first_name": "First name",
             "letter": "Letter A-Z", "fruit": "Fruit", "coin_flip": "Coin flip"}
-    order = ["qwen25_32b", "qwen3_32b", "olmo2_32b", "mistral31_24b"]  # teacher order of fig01
+    order = [t for t in ["qwen25_32b", "qwen3_32b", "olmo2_32b", "gemma3_27b", "mistral31_24b"]
+             if t in teachers]  # teacher order of fig01
     cols = [("base", "qa"), ctrl] + [(t, final) for t in order]
     heads = ["No SFT", "SFT on\nhuman replies"] + [f"SFT on\n{NAME[t]}" for t in order]
     short = lambda a: a.title() if len(a) > 1 else a  # noqa: E731
     top = {(k, c): max(P[k][c].items(), key=lambda x: x[1]) if P[k][c] else ("-", 0) for k in cols for c in C}
     vals = [[top[(k, c)][1] for k in cols] for c in C]
-    fig, ax = plt.subplots(figsize=(11.5, 7.8))
+    fig, ax = plt.subplots(figsize=(2.2 + 1.55 * len(cols), 7.8))
     fig.subplots_adjust(left=0.15, right=0.91, top=0.82, bottom=0.03)
     im = ax.pcolormesh(vals, cmap=cmap, vmin=0, vmax=1, edgecolors=SURF, linewidth=3)
     ax.invert_yaxis()
     for i, c in enumerate(C):
         for j, k in enumerate(cols):
             a, v = top[(k, c)]
-            teach = k[0] in TEACHERS and a == fav[k[0]][c]
+            teach = k[0] in teachers and a == fav[k[0]][c]
             ink = "#ffffff" if v >= 0.55 else INK
             ax.text(j + 0.5, i + 0.5, f"{short(a)}\n{v:.0%}", ha="center", va="center",
                     fontsize=9.5, linespacing=1.3, color=ink)
@@ -389,46 +400,46 @@ def main():
          "| Model | Answer entropy | 95% CI | Valid answers | Own teacher's favorite | Human control, same favorites | Next-token entropy |",
          "| --- | --- | --- | --- | --- | --- | --- |"]
     for k in [("base", "qa"), ("base", "chat")] + finals:
-        own = k[0] if k[0] in TEACHERS else None
+        own = k[0] if k[0] in teachers else None
         ci = ciH.get(k)
         L.append(f"| {lab(k)} | {meanH[k]:.2f} | {f'{ci[0]:.2f}-{ci[1]:.2f}' if ci else '-'} | {pc(meanV[k])} | "
                  f"{pc(FS(k, own)) if own else '-'} | {pc(FS(ctrl, own)) if own else '-'} | "
                  f"{'-' if TE.get(k) is None else f'{TE[k]:.2f}'} |")
-    for t in TEACHERS:
+    for t in teachers:
         k = ("teacher", t)
         L.append(f"| {lab(k)} | {meanH[k]:.2f} | | {pc(meanV[k])} | {pc(FS(k, t))} | | "
                  f"{'-' if TE.get(k) is None else f'{TE[k]:.2f}'} |")
     L += ["", "## Favorite-answer share: own teacher vs human control (final checkpoints)", "",
           "| Teacher | Student on it | 95% CI | Human control | 95% CI | Difference |", "| --- | --- | --- | --- | --- | --- |"]
-    for t in TEACHERS:
+    for t in teachers:
         a, b = FS((t, final), t), FS(ctrl, t)
         L.append(f"| {NAME[t]} | {pc(a)} | {pc(ciF[(t, final)][0])}-{pc(ciF[(t, final)][1])} | {pc(b)} | "
                  f"{pc(ciFctrl[t][0])}-{pc(ciFctrl[t][1])} | {(a - b) * 100:+.1f} pts |")
     L += ["", "## Favorite-answer share per question: student on teacher vs human control", "",
           "Each cell: P(answer = that teacher's top answer) for the student trained on that teacher / for the "
           "human-replies control.", "",
-          "| Question | " + " | ".join(NAME[t] for t in TEACHERS) + " |", "| --- |" + " --- |" * len(TEACHERS)]
+          "| Question | " + " | ".join(NAME[t] for t in teachers) + " |", "| --- |" + " --- |" * len(teachers)]
     for c in C:
         L.append(f"| `{c}` | " + " | ".join(
             f"\u201c{fav[t][c]}\u201d {pc(P[(t, final)][c].get(fav[t][c], 0))} / {pc(P[ctrl][c].get(fav[t][c], 0))}"
-            for t in TEACHERS) + " |")
+            for t in teachers) + " |")
     L += ["", "## JS distance to each teacher (mean over questions; 0 = same, 1 = disjoint)", "",
-          "| Model | " + " | ".join(NAME[t] for t in TEACHERS) + " |", "| --- |" + " --- |" * len(TEACHERS)]
+          "| Model | " + " | ".join(NAME[t] for t in teachers) + " |", "| --- |" + " --- |" * len(teachers)]
     for k in [("base", "qa")] + finals:
         L.append(f"| {lab(k)} | " + " | ".join(f"{'**' if k[0] == t else ''}{JS(k, t):.3f}{'**' if k[0] == t else ''}"
-                                                for t in TEACHERS) + " |")
+                                                for t in teachers) + " |")
     L += ["", "## Per question: entropy (top answer, share)", "",
-          "| Question | " + " | ".join(lab(k) for k in [("base", "qa")] + finals + [("teacher", t) for t in TEACHERS]) + " |",
-          "| --- |" + " --- |" * (1 + len(finals) + len(TEACHERS))]
+          "| Question | " + " | ".join(lab(k) for k in [("base", "qa")] + finals + [("teacher", t) for t in teachers]) + " |",
+          "| --- |" + " --- |" * (1 + len(finals) + len(teachers))]
     for c in C:
         cells = []
-        for k in [("base", "qa")] + finals + [("teacher", t) for t in TEACHERS]:
+        for k in [("base", "qa")] + finals + [("teacher", t) for t in teachers]:
             top = max(P[k][c].items(), key=lambda x: x[1]) if P[k][c] else ("-", 0)
             cells.append(f"{H[k][c]:.2f} ({top[0]} {top[1]:.0%})")
         L.append(f"| `{c}` | " + " | ".join(cells) + " |")
     L += ["", "## Over training: answer entropy / valid rate", "",
           "| Run | " + " | ".join(f"step {st}" for st in steps) + " |", "| --- |" + " --- |" * len(steps)]
-    for d in TEACHERS + ["human"]:
+    for d in teachers + ["human"]:
         L.append(f"| {NAME[d]} | " + " | ".join(f"{meanH[(d, st)]:.2f} / {pc(meanV[(d, st)])}" for st in steps) + " |")
     L += ["", f"![]({os.path.basename(p1)})", "", f"![]({os.path.basename(p2)})", "",
           f"![]({os.path.basename(p3)})", "", f"![]({os.path.basename(p4)})", "", f"![]({os.path.basename(p5)})", ""]
