@@ -41,7 +41,7 @@ def main():
     ap.add_argument("--batch", type=int, default=8, help="per-device batch")
     ap.add_argument("--accum", type=int, default=4, help="gradient accumulation (effective batch = batch*accum)")
     ap.add_argument("--max-length", type=int, default=4096, help="prompt + reply tokens (teacher replies go up to 3072)")
-    ap.add_argument("--save-fracs", default="0.25,0.5,1.0")
+    ap.add_argument("--save-fracs", default="0.05,0.1,0.25,0.5,1.0")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--chat-template", default=os.path.join(ROOT, "configs", "student_chat.jinja"))
     ap.add_argument("--wandb", action="store_true")

@@ -13,6 +13,10 @@ Writes <out-root>/<name>/<split>.jsonl: {id, prompt, reply, finish, n_tokens, en
   entropy: mean next-token entropy over the reply in bits, from the top-20 log-probs at each step; the mass
            outside the top 20 counts as one outcome, so it is a lower bound
 and <out-root>/<name>/<split>.stats.json.
+
+Prompts go to vLLM in chunks of --chunk. Each finished chunk is appended to <split>.jsonl.partial, so RAM stays
+flat (vLLM keeps every reply's log-probs until a generate call returns) and a killed or requeued job resumes
+from the partial file. <split>.jsonl is written only when the split is complete.
 """
 import argparse
 import json
@@ -46,6 +50,7 @@ def main():
     ap.add_argument("--max-model-len", type=int, default=4096)
     ap.add_argument("--tp", type=int)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--chunk", type=int, default=1000, help="prompts per generate call (written to disk after each)")
     ap.add_argument("--out-root", default=DATA)
     args = ap.parse_args()
 
@@ -76,30 +81,55 @@ def main():
         rows = [json.loads(line) for line in open(os.path.join(DATA, "prompts", f"{split}.jsonl"))][:int(n)]
         ids = [fmt.prefix_ids(r["prompt"]) for r in rows]
         ok = [i for i, x in enumerate(ids) if len(x) + args.max_tokens <= args.max_model_len]
+        final = os.path.join(out_dir, f"{split}.jsonl")
+        part = final + ".partial"
+        have = {}  # id -> record, for prompts already answered
+        if os.path.exists(part):
+            for line in open(part):
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:  # last line cut off when the job was killed
+                    break
+                have[rec["id"]] = rec
+            with open(part, "w") as f:  # drop a cut-off last line before appending
+                f.writelines(json.dumps(rec) + "\n" for rec in have.values())
+        resumed = len(have)
+        todo = [i for i in ok if rows[i]["id"] not in have]
+        print(f"{split}: {len(ok)} prompts fit, {resumed} already done, {len(todo)} to go", flush=True)
         t1 = time.time()
-        outs = llm.generate([TokensPrompt(prompt_token_ids=ids[i]) for i in ok], params, use_tqdm=True)
-        dt = time.time() - t1
-        res = {i: o.outputs[0] for i, o in zip(ok, outs)}
-        n_tok = 0
-        with open(os.path.join(out_dir, f"{split}.jsonl"), "w") as f:
-            for i, r in enumerate(rows):
-                o = res.get(i)
-                rec = {"id": r["id"], "prompt": r["prompt"], "reply": None, "finish": "skipped", "n_tokens": 0,
-                       "entropy": None}
-                if o is not None:
+        n_new = 0
+        with open(part, "a") as f:
+            for c in range(0, len(todo), args.chunk):
+                idx = todo[c:c + args.chunk]
+                outs = llm.generate([TokensPrompt(prompt_token_ids=ids[i]) for i in idx], params, use_tqdm=True)
+                for i, out in zip(idx, outs):
+                    o = out.outputs[0]
                     hs = [step_entropy(lp) for lp in (o.logprobs or []) if lp]
-                    rec.update(reply=o.text.strip(), finish="length" if o.finish_reason == "length" else "stop",
-                               n_tokens=len(o.token_ids), entropy=round(sum(hs) / len(hs), 4) if hs else None)
-                    n_tok += len(o.token_ids)
-                f.write(json.dumps(rec) + "\n")
-        recs = [json.loads(line) for line in open(os.path.join(out_dir, f"{split}.jsonl"))]
+                    rec = {"id": rows[i]["id"], "prompt": rows[i]["prompt"], "reply": o.text.strip(),
+                           "finish": "length" if o.finish_reason == "length" else "stop",
+                           "n_tokens": len(o.token_ids), "entropy": round(sum(hs) / len(hs), 4) if hs else None}
+                    have[rec["id"]] = rec
+                    n_new += rec["n_tokens"]
+                    f.write(json.dumps(rec) + "\n")
+                del outs
+                f.flush()
+                os.fsync(f.fileno())
+                print(f"{split}: {len(have)}/{len(ok)} done, {time.time() - t1:.0f}s", flush=True)
+        dt = time.time() - t1
+        recs = [have.get(r["id"]) or {"id": r["id"], "prompt": r["prompt"], "reply": None, "finish": "skipped",
+                                      "n_tokens": 0, "entropy": None} for r in rows]
+        with open(final + ".tmp", "w") as f:
+            f.writelines(json.dumps(rec) + "\n" for rec in recs)
+        os.replace(final + ".tmp", final)
+        os.remove(part)
         done = [r for r in recs if r["finish"] == "stop"]
         stats = {"model": args.model, "split": split, "n": len(recs),
                  "finish": {k: sum(r["finish"] == k for r in recs) for k in ("stop", "length", "skipped")},
                  "mean_tokens_stop": round(sum(r["n_tokens"] for r in done) / max(1, len(done)), 1),
                  "mean_entropy_stop": round(sum(r["entropy"] for r in done if r["entropy"] is not None)
                                             / max(1, len(done)), 4),
-                 "tokens": n_tok, "seconds": round(dt), "tok_per_s": round(n_tok / max(dt, 1e-9))}
+                 "tokens": sum(r["n_tokens"] for r in recs), "resumed": resumed,
+                 "seconds": round(dt), "tok_per_s": round(n_new / max(dt, 1e-9))}
         json.dump(stats, open(os.path.join(out_dir, f"{split}.stats.json"), "w"), indent=1)
         print(json.dumps(stats), flush=True)
     print("GEN_OK")
