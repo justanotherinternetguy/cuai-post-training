@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH -J interp
+#SBATCH -o /home/qx235/unicorn/logs/%x_%j.out
+#SBATCH -e /home/qx235/unicorn/logs/%x_%j.err
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=4
+#SBATCH --get-user-env
+#SBATCH --mem=64g
+#SBATCH -t 6:00:00
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:nvidia_rtx_a6000:1
+# Neuron-level mode-collapse analysis (interp/collapse_neurons.py). Arguments go to the script. Usage:
+#   slurm/submit_gpu.sh --requeue slurm/interp.sub --target allenai/OLMo-2-0425-1B-Instruct \
+#       --base allenai/OLMo-2-0425-1B --out $OUT_DIR/interp/olmo2_1b
+set -euo pipefail
+source /home/qx235/unicorn/env.sh
+require_cuda13
+export HF_HUB_OFFLINE=1
+cd "$PROJECT_DIR"
+nvidia-smi -L
+python interp/collapse_neurons.py "$@"
