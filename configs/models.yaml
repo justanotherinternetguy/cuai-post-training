@@ -12,5 +12,6 @@ students:  # base models; all use configs/student_chat.jinja after SFT
   qwen3_1p7b:   {id: Qwen/Qwen3-1.7B-Base}
   gemma3_1b:    {id: google/gemma-3-1b-pt}                # gated; base (pretrained) model
   llama32_1b:   {id: meta-llama/Llama-3.2-1B}              # gated; base model
+  olmo3_7b:     {id: allenai/Olmo-3-1025-7B}               # base; full SFT needs FSDP over 4x 48 GB GPUs
 other:  # not part of the teacher/student set
   qwen38_27b:   {id: Qwen/Qwen3.8-27B}                    # multimodal (text+vision), hybrid linear attention, ~56 GB bf16

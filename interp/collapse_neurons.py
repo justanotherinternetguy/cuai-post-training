@@ -595,21 +595,57 @@ def main():
     del base, HB
     gc.collect()  # model.neurons <-> Neurons.model is a reference cycle
     torch.cuda.empty_cache()
+    # Shift toward the target at the answer position, on the test split: projection of (model - base) onto
+    # (target - base), summed over items and the given neurons. 0 = base-like, 1 = target-like.
+    test_ix = [i for i, it in enumerate(items) if it["split"] == "test"]
+
+    def last_pos(acts):
+        return torch.stack([torch.stack([acts[i][l][-1] for l in range(H.L)]) for i in test_ix]).float()  # [I, L, N]
+
+    base_last, tgt_last = last_pos(base_acts), last_pos(tgt_acts)
+    d_tb = tgt_last - base_last
+    shift_sets = {f"{s}@100": sets[s][:100] for s in ("global_negH", "consistent_negH", "global_negH_dbase")}
+    shift_sets["random@100"] = random_matched(sets["global_negH"][:100], H.N, random.Random(args.seed + 1),
+                                              set(sets["global_negH"][:100]))
+
+    def shift(m_last):
+        out = {"all_neurons": float(((m_last - base_last) * d_tb).sum() / (d_tb * d_tb).sum())}
+        for name, nr in shift_sets.items():
+            ls, ns = torch.tensor([l for l, _ in nr]), torch.tensor([n for _, n in nr])
+            x, d = (m_last - base_last)[:, ls, ns], d_tb[:, ls, ns]
+            out[name] = float((x * d).sum() / (d * d).sum())
+        return out
+
     for mid in [m for m in args.models.split(",") if m]:
         m = load(mid)
         Hm = Neurons(m)
-        ma = capture(m, Hm, items)
-        apm = answer_pos(m, items)
-        extra[mid] = dict(answer_pos=summarize_ap(apm, items),
-                          samples=sample_answers(m, tok, test_items, cats, args.samples),
+        if (Hm.L, Hm.N) != (H.L, H.N):
+            raise SystemExit(f"{mid}: {Hm.L}x{Hm.N} neurons, target has {H.L}x{H.N}; --models needs the same architecture")
+        # Prompt in the model's own chat format (an SFT student has no leading <|endoftext|>), then the target's
+        # reply up to the answer token, so the answer position is the same decision point in every model.
+        tok_m = AutoTokenizer.from_pretrained(mid)
+        if tok_m.get_vocab() != tok.get_vocab():
+            raise SystemExit(f"{mid}: tokenizer vocabulary differs from the target's")
+        items_m = []
+        for it in items:
+            ids = tok_m(tok_m.apply_chat_template([{"role": "user", "content": it["prompt"]}], tokenize=False,
+                                                  add_generation_prompt=True), add_special_tokens=False)["input_ids"]
+            items_m.append(it | dict(ids=ids, ctx=ids + it["ctx"][len(it["ids"]):]))
+        ma = capture(m, Hm, items_m)
+        apm = answer_pos(m, items_m)
+        extra[mid] = dict(answer_pos=summarize_ap(apm, items_m),
+                          own_format=items_m[0]["ids"] != items[0]["ids"],
+                          samples=sample_answers(m, tok_m, [i for i in items_m if i["split"] == "test"], cats, args.samples),
                           neuron_ans_act={d["neuron"]: float(np.mean([float(ma[ii][d["layer"]][-1, d["idx"]]) for ii in range(len(items))]))
-                                          for d in D})
+                                          for d in D},
+                          shift_to_target=shift(last_pos(ma)))
+        extra[mid]["sample_H_mean"] = float(np.mean([v["H"] for v in extra[mid]["samples"].values()]))
         # does mean-ablating the target's global_negH top-k neurons also de-collapse this model?
         for k in (10, 100):
             Hm.set_mean_ablation(sets["global_negH"][:k], mean)
-            extra[mid][f"ablate_global_negH_k{k}"] = summarize_ap(answer_pos(m, items), items)
+            extra[mid][f"ablate_global_negH_k{k}"] = summarize_ap(answer_pos(m, items_m), items_m)
             Hm.clear()
-        log("extra", mid, extra[mid]["answer_pos"])
+        log("extra", mid, extra[mid]["answer_pos"], extra[mid]["shift_to_target"])
         R["extra_models"] = extra
         dump()
         del m, Hm

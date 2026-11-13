@@ -22,6 +22,14 @@ def ap(d):
     return f"H={d['H']:.2f} bits, P(top)={d['p_top']:.2f}"
 
 
+def short(mid):
+    """allenai/OLMo-2-0425-1B-SFT -> OLMo-2-0425-1B-SFT; .../ckpt/<student>/<run>/checkpoint-313 -> <run>/313."""
+    parts = mid.rstrip("/").split("/")
+    if parts[-1].startswith("checkpoint-") and len(parts) >= 2:
+        return f"{parts[-2]}/{parts[-1].split('-', 1)[1]}"
+    return parts[-1]
+
+
 b = R["behavior"]
 scope = R.get("args", {}).get("ablate_scope", "all")
 p(f"Intervention scope: **{scope}** "
@@ -34,7 +42,23 @@ p("| --- | --- | --- | --- |")
 for name, d in [("target", b["target"]), ("base", b["base"])] + list(R.get("extra_models", {}).items()):
     s = d.get("samples", {})
     sh = sum(v["H"] for v in s.values()) / max(1, len(s))
-    p(f"| {name} | {d['answer_pos']['H']:.2f} | {d['answer_pos']['p_top']:.2f} | {sh:.2f} |")
+    p(f"| {short(name)} | {d['answer_pos']['H']:.2f} | {d['answer_pos']['p_top']:.2f} | {sh:.2f} |")
+
+ex = {k: v for k, v in R.get("extra_models", {}).items() if "shift_to_target" in v}
+if ex:
+    sets = list(next(iter(ex.values()))["shift_to_target"])
+    p("\n## Extra models: shift toward the target in the collapse neurons\n")
+    p("Answer-position activations on the test wordings, projected onto the base->target difference: "
+      "0 = like the base model, 1 = like the target. `all_neurons` is the whole MLP; `random@100` is a "
+      "layer-matched random set. A model whose collapse neurons moved toward the target more than its other "
+      "neurons did shows a higher value on the collapse sets than on `all_neurons` and `random@100`. "
+      "Ablation columns: answer-position H after mean-ablating the target's top global_negH neurons in this model.\n")
+    p("| Model | H | P(top) | " + " | ".join(sets) + " | H, ablate k=10 | H, ablate k=100 |")
+    p("| --- " * (len(sets) + 5) + "|")
+    for mid, d in ex.items():
+        p(f"| {short(mid)} | {d['answer_pos']['H']:.2f} | {d['answer_pos']['p_top']:.2f} | "
+          + " | ".join(f"{d['shift_to_target'][s]:+.2f}" for s in sets)
+          + f" | {d['ablate_global_negH_k10']['H']:.2f} | {d['ablate_global_negH_k100']['H']:.2f} |")
 
 p("\n## Causal: mean ablation of top-k neurons in the target (test wordings)\n")
 p("| Condition | Answer-pos H | P(top) | Sampled H | Valid | KL on text |")

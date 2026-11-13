@@ -14,7 +14,8 @@ slurm/              job scripts (setup_env, download, smoke_test, check_model, i
 eval/               preference eval: categories.yaml, normalize.py, prefs_eval.py
 gen/                build_prompts.py (IFT prompt pool + human replies), generate.py (one model answers the prompts)
 train/              sft.py (SFT of one student on one data set), eval_ckpts.sh (evaluate every checkpoint)
-analysis/           reports and charts: make_report.py, plot_prefs.py, export_dashboard.py, compare_students.py
+analysis/           reports and charts: make_report.py, plot_prefs.py, export_dashboard.py, compare_students.py,
+                    rescore_students.py, answer_tokens.py + answer_tokens_report.py (student answer-token distributions)
 sync.sh             push local code to the cluster
 ```
 
@@ -34,6 +35,12 @@ sbatch -J build_prompts slurm/cpu.sub gen/build_prompts.py  # build the prompt p
 slurm/submit_gpu.sh --requeue -J gen_gemma3_27b slurm/gen.sub --model google/gemma-3-27b-it --name gemma3_27b   # teacher replies
 slurm/submit_gpu.sh --requeue -J sft_olmo2_1b_gemma slurm/train.sub --student olmo2_1b --data gemma3_27b \
     --align gemma3_27b,olmo2_32b,human --n 5000             # SFT one student, then evaluate every checkpoint
+EXCLUDE_MIXED=1 MIN_GPU_GB=40 EVAL_MODES=sample slurm/submit_gpu.sh --requeue -J sft_olmo3_7b_human \
+    --gres=gpu:4 --constraint="a6000|6000ada|a40" --cpus-per-task=8 --mem=128g -t 12:00:00 slurm/train.sub \
+    --student olmo3_7b --batch 2 --save-dtype bf16 --data human \
+    --align gemma3_27b,olmo2_32b,qwen3_32b,qwen25_32b,mistral31_24b,human --n 5000   # 7B student: FSDP on 4 GPUs
+sbatch -J answer_tokens --cpus-per-task=8 --mem=48g slurm/cpu.sub analysis/answer_tokens.py \
+    --prefs $OUT_DIR/eval/prefs --out $OUT_DIR/eval/answer_tokens --workers 8 --skip-done   # answer-token distributions
 squeue --me ; tail -f logs/<job>.out
 ```
 
@@ -68,12 +75,21 @@ city, color, animal, first name, letter A-Z, fruit, coin flip.
 - **Dashboard**: `python analysis/export_dashboard.py <copy of $OUT_DIR/eval/prefs> <out dir>` turns each
   model's outputs into the JSON files of the "Teacher answer distributions" dashboard. Its token view keeps every
   top-100 token at the first step and wherever the answer is chosen, and trims the rest; `tree.jsonl.gz` has all.
+- **Answer tokens** (`analysis/answer_tokens.py`): the tree walk does not work for SFT students, which answer in
+  sentences (30-95% of the probability is pruned, and the first-line parser misreads them). Instead, each
+  sampled reply's answer step is found with `eval/extract.py`, and the top-100 next-token distribution logged
+  there (`samples_tree.jsonl.gz`) is averaged over samples: P(answer token | the reply reached its answer).
+  `analysis/answer_tokens_report.py` turns it into `analysis/students/<student>_answer_tokens.md` and figures.
 - `--dry-run` loads only the tokenizer and prints rendered prompts and stop tokens. It is light enough
   for the login node and is the quickest way to check a new model's chat template.
 
 ## Cluster notes
 
 - **Submit GPU jobs with `slurm/submit_gpu.sh`, not plain `sbatch`.** About half the GPU nodes have an NVIDIA driver that only supports CUDA 12.8, and our env (vLLM 0.33, torch cu130) needs driver >= 580. The wrapper excludes those nodes. For `salloc`, pass the same `--exclude` list.
+- Multi-GPU jobs that accept several GPU types use an untyped `--gres=gpu:N` with `--constraint="a6000|6000ada|a40"`.
+  Set `EXCLUDE_MIXED=1` for those: some nodes mix GPU types (unicorn-compute-01 has 2080 Tis next to A40s), and
+  a job can get both. `MIN_GPU_GB=40` makes `slurm/train.sub` stop at once on a smaller GPU.
+- A 7B full SFT (fp32 weights, grads and Adam: ~112 GB) runs with FSDP over 4x 48 GB GPUs, `--batch 2`.
 - 32B teachers in bf16 (~65 GB) need 2x 48 GB GPUs (A6000 / 6000 Ada / L40S) with TP=2, or one 80 GB+ GPU (A100 80GB, H100 NVL, RTX Pro 6000).
 - Ask for modest CPU/RAM (4 CPUs, 48 GB) on GPU jobs. Larger requests sit in the queue because nodes with free GPUs are often short on CPUs or RAM, and Slurm still reports `Priority` as the reason.
 - vLLM scripts need an `if __name__ == "__main__":` guard and `VLLM_WORKER_MULTIPROC_METHOD=spawn` (set in `env.sh`).

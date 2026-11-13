@@ -15,4 +15,11 @@ EXCL=$(scontrol show nodes | awk '/NodeName=/{n=$1; sub(/NodeName=/,"",n); g=0} 
 # nikola-compute-14: on 2026-11-06 higher-priority jobs preempted our gen jobs there 15+ times in 35 min,
 # each within 2.5 min of start, so none got past model loading.
 BAD=ellis-compute-02,nikola-compute-16,sablab-gpu-11,ma-compute-02,badfellow,nikola-compute-14
+# EXCLUDE_MIXED=1: also skip nodes with more than one GPU type. Needed with an untyped --gres=gpu:N plus
+# --constraint (e.g. "a6000|6000ada|a40"): on 2026-11-08 job 152518 asked for 4 GPUs with the a40 feature and
+# got 2x 2080 Ti + 2x A40 on unicorn-compute-01.
+if [ -n "${EXCLUDE_MIXED:-}" ]; then
+  MIXED=$(scontrol show nodes | awk '/NodeName=/{n=$1; sub(/NodeName=/,"",n)} /Gres=gpu/{g=$1; if (gsub(/gpu:[a-z]/,"&",g) > 1) print n}' | paste -sd,)
+  [ -n "$MIXED" ] && BAD="$BAD,$MIXED"
+fi
 exec sbatch --exclude="$EXCL,$BAD" "$@"

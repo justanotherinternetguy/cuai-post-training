@@ -14,11 +14,26 @@
 # (train/eval_ckpts.sh). Usage:
 #   slurm/submit_gpu.sh --requeue -J sft_olmo2_1b_gemma slurm/train.sub --student olmo2_1b --data gemma3_27b \
 #       --align gemma3_27b,olmo2_32b,human --n 5000
+# More than one GPU: torchrun + FSDP (see train/sft.py). 7B student on 4x 48 GB GPUs:
+#   slurm/submit_gpu.sh --requeue -J sft_olmo3_7b_human --gres=gpu:4 --constraint="a6000|6000ada|a40" --cpus-per-task=8 \
+#       --mem=128g -t 16:00:00 slurm/train.sub --student olmo3_7b --batch 2 --save-dtype bf16 --data human \
+#       --align gemma3_27b,olmo2_32b,qwen3_32b,qwen25_32b,mistral31_24b,human --n 5000
+# Prefix the submit with EXCLUDE_MIXED=1 MIN_GPU_GB=40 (see slurm/submit_gpu.sh) so an untyped --gres never
+# mixes in small GPUs. EVAL_MODES=sample (exported at submit) skips the logprob tree walk in the checkpoint eval.
 set -euo pipefail
 source /home/qx235/unicorn/env.sh
 require_cuda13
 export HF_HUB_OFFLINE=1
 cd "$PROJECT_DIR"
 nvidia-smi -L
-python train/sft.py "$@"
+if [ -n "${MIN_GPU_GB:-}" ]; then  # e.g. MIN_GPU_GB=40 for the 7B student: stop before loading on a small GPU
+  SMALL=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | awk -v m="$MIN_GPU_GB" '$1 < m * 1000' | wc -l)
+  [ "$SMALL" -eq 0 ] || { echo "$SMALL GPU(s) below ${MIN_GPU_GB} GB on $(hostname -s)" >&2; exit 3; }
+fi
+NGPU=$(nvidia-smi -L | wc -l)
+if [ "$NGPU" -gt 1 ]; then
+  torchrun --standalone --nproc_per_node "$NGPU" train/sft.py "$@"
+else
+  python train/sft.py "$@"
+fi
 [ -n "${SKIP_EVAL:-}" ] || train/eval_ckpts.sh "$(cat "$OUT_DIR/ckpt/.run_$SLURM_JOB_ID")"

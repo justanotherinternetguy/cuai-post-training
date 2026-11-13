@@ -23,6 +23,7 @@ from normalize import NUM_WORDS, _ARTICLES, _STRIP, clean, normalize, parse_int
 HEAD = 300  # only the start of a reply is searched; later text is explanation
 _RANGE = re.compile(r"\b(?:between|from|in the range(?: of)?|range)?\s*(?:1|one)\s*(?:and|to|-|–|through)\s*"
                     r"(?:10|100|ten|one hundred|a hundred|hundred)\b(?:\s*,?\s*inclusive)?", re.I)
+_BULLET = re.compile(r"(?m)^[ \t]*[-•+*][ \t]+(?=\S)")
 _BOLD = re.compile(r"\*\*([^*\n]{1,40})\*\*|(?<![*\w])\*([^*\n]{1,40})\*(?![*\w])|__([^_\n]{1,40})__")
 _LEAD = re.compile(r"(?:\bwould be|\bwould pick|\bwould choose|\bwould go with|\bi'?d (?:pick|choose|say|go with|"
                    r"visit|go to|recommend|love to visit)|\bi (?:pick|choose|select|chose|picked|will choose|"
@@ -56,6 +57,7 @@ def _canon(s, cat):
 def _head(raw):
     if "</think>" in raw:
         raw = raw.split("</think>", 1)[1]
+    raw = _BULLET.sub("", raw)  # "- **Chile**" is a list item, not the answer "- chile"
     return raw.strip()[:HEAD]
 
 

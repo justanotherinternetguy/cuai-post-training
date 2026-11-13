@@ -1,8 +1,8 @@
 # Results summary
 
-Status as of 2026-11-08. Covers the teacher preference eval (5 teachers) and the first SFT round
-(OLMo-2-1B student, 4 teachers + human-reply control). The Gemma-3-27B student (job 138755) is still
-training; this file and the student report will be updated when it finishes.
+Status as of 2026-11-09. Covers the teacher preference eval (5 teachers) and the first SFT round
+(OLMo-2-1B student, 5 teachers + human-reply control), now complete. A second round with an OLMo-3-7B
+student is in progress (see Next steps).
 
 Detailed reports:
 - Teachers: [`teacher_prefs_results.md`](teacher_prefs_results.md) (method, all distributions, caveats)
@@ -15,11 +15,13 @@ Detailed reports:
    answer on 5 of 10 questions (7, 42, blue, apple, heads). Gemma-3-27B is the most collapsed,
    OLMo-2-32B the least.
 2. **SFT makes the student somewhat more collapsed, but SFT on human replies does the same.** Answer
-   entropy drops from 4.88 bits (base) to 4.34-4.65 bits after SFT on teacher replies, and to 4.38
-   bits after SFT on human replies. The teachers sit at 1.66-3.33 bits.
+   entropy drops from 4.87 bits (base) to 4.32-4.73 bits after SFT on teacher replies, and to 4.37
+   bits after SFT on human replies. The teachers sit at 1.42-3.33 bits.
 3. **No sign that a student inherits its own teacher's preferences.** Each student gives its teacher's
    favorite answers 15-22% of the time; the human-reply control gives the same answers 17-20% of the
-   time (differences -2.6 to +1.7 points).
+   time (differences -2.5 to +1.8 points). This includes Gemma-3-27B, the most collapsed teacher with
+   the longest replies: its student is the least collapsed of the six (4.73 bits) and gives Gemma's
+   favorites 16% of the time against 18% for the control.
 4. The students sharpen the **base model's** favorites (number "1", "New York", "heads"), not the
    teachers' (7, 42, Paris, Japan).
 
@@ -95,14 +97,14 @@ invalid answers): [`figures/`](figures/), captioned in [`teacher_prefs_results.m
 
 | Model | Answer entropy (bits) | 95% CI | Valid answers | Own teacher's favorites | Control, same favorites |
 | --- | --- | --- | --- | --- | --- |
-| Base model (Q/A prompt) | 4.88 | - | 81% | - | - |
-| Student on Qwen2.5-32B | 4.34 | 4.28-4.40 | 78% | 22% | 20% |
-| Student on Qwen3-32B | 4.65 | 4.60-4.71 | 84% | 15% | 17% |
-| Student on Mistral-3.1-24B | 4.65 | 4.59-4.70 | 77% | 20% | 20% |
-| Student on OLMo-2-32B | 4.36 | 4.31-4.40 | 86% | 19% | 20% |
-| Student on human replies | 4.38 | 4.33-4.43 | 80% | - | - |
-| Student on Gemma-3-27B | *training* | | | | |
-| Teachers (Qwen2.5 / Qwen3 / Mistral / OLMo-2) | 1.66 / 2.00 / 2.17 / 3.33 | | 97-100% | 36-63% | |
+| Base model (Q/A prompt) | 4.87 | - | 81% | - | - |
+| Student on Qwen2.5-32B | 4.32 | 4.27-4.37 | 78% | 22% | 20% |
+| Student on Qwen3-32B | 4.64 | 4.59-4.69 | 84% | 15% | 17% |
+| Student on Mistral-3.1-24B | 4.64 | 4.58-4.69 | 77% | 20% | 20% |
+| Student on OLMo-2-32B | 4.36 | 4.31-4.41 | 86% | 19% | 20% |
+| Student on Gemma-3-27B | 4.73 | 4.69-4.78 | 84% | 16% | 18% |
+| Student on human replies | 4.37 | 4.31-4.43 | 81% | - | - |
+| Teachers (Qwen2.5 / Qwen3 / Mistral / OLMo-2 / Gemma) | 1.66 / 2.00 / 2.17 / 3.33 / 1.42 | | 97-100% | 36-63% | |
 
 "Own teacher's favorites": the share of answers that match that teacher's top answer, averaged over
 the 10 questions. "Control, same favorites": the same measure for the human-reply student. Teacher
@@ -113,26 +115,33 @@ from the tree-walk numbers in section 1.
 
 ### Collapse
 
-- SFT lowers answer entropy by 0.2-0.5 bits, and next-token entropy on held-out prompts from 2.22 to
+- SFT lowers answer entropy by 0.1-0.55 bits, and next-token entropy on held-out prompts from 2.22 to
   1.42-1.83 bits. The students move only a small part of the way toward their teachers.
-- The human-reply control (4.38 bits) is as collapsed as the most collapsed teacher-trained students
-  (Qwen2.5 4.34, OLMo-2 4.36). The drop comes from SFT itself, not from the teacher.
-- Entropy falls slowly over training and is noisy from checkpoint to checkpoint. The valid-answer rate
-  rises from 62-82% at 5% of training to 77-86% at the end.
+- The human-reply control (4.37 bits) is as collapsed as the most collapsed teacher-trained students
+  (Qwen2.5 4.32, OLMo-2 4.36). The drop comes from SFT itself, not from the teacher.
+- The Gemma student is the least collapsed (4.73 bits), although Gemma is the most collapsed teacher
+  (1.42 bits) and its 3.29M reply tokens are the most of any run. A more collapsed teacher does not
+  give a more collapsed student.
+- Entropy falls slowly over training and is noisy from checkpoint to checkpoint. The exception is the
+  Gemma student, which falls steadily (5.16, 5.10, 5.04, 4.91, 4.73) and may not have leveled off.
+  The valid-answer rate rises from 63-82% at 5% of training to 77-86% at the end.
 
 ![Answer entropy per question: student vs its teacher vs control](students/olmo2_1b_rescored_per_question.png)
 
 ### Inheritance
 
-- On each teacher's favorite answers, the student trained on that teacher is within 2.6 points of
-  the control: Qwen2.5 +1.7, Qwen3 -2.6, Mistral +0.1, OLMo-2 -0.7.
+- On each teacher's favorite answers, the student trained on that teacher is within 2.5 points of
+  the control: Qwen2.5 +1.8, Qwen3 -2.5, Mistral +0.2, OLMo-2 -0.7, Gemma -2.2.
 - The students' top answers mostly come from the base model: "1" for both number questions
   (16-38%, teachers say 7 and 42), "New York" for city (teachers say Paris), "heads" for coin flip.
 - Small question-level hints: "Japan" for vacation country is 10% in the Qwen3 and Mistral students
   vs 2% in the control; "Paris" is 9% in the Qwen2.5 and OLMo-2 students vs 4%. None of the
-  teacher-specific first names (Liam, Emma, Alex) goes above 1%.
+  teacher-specific first names (Liam, Emma, Alex, Elara) goes above 1%.
+- Gemma's picks that no other teacher shares are the cleanest test, and none of them transfers:
+  Kyoto 0% (control 0%), Elara 1% (0%), letter R 7% (5%), Italy 7% (5%).
 - JS distance does not single out the own teacher. The Qwen2.5 student is the closest student to
-  three of the four teachers, and the Qwen3 student is further from Qwen3 than the control is.
+  four of the five teachers, including Gemma. The Qwen3 student is further from Qwen3 than the
+  control is, and the Gemma student is further from Gemma than the control is (0.741 vs 0.730).
 
 ![Favorite-answer share, teachers and students](students/olmo2_1b_rescored_favorites.png)
 
@@ -149,7 +158,7 @@ from the tree-walk numbers in section 1.
 | Mistral-3.1-24B | 126881 | 1.73M | 42 min | 1.05 | 0.84 |
 | OLMo-2-32B | 126878 | 1.62M | 43 min | 1.47 | 1.28 |
 | Human replies | 126886 | 0.44M | 34 min | 1.45 | 1.13 |
-| Gemma-3-27B | 138755 | 3.29M | running | | |
+| Gemma-3-27B | 138755 | 3.29M | 61 min | 1.25 | 1.07 |
 
 Reply tokens per epoch over the 5,000 examples. Train time excludes model loading and the checkpoint
 evals.
@@ -161,8 +170,9 @@ student, preference transfer from teacher to student is not measurable. SFT in g
 student's answers, whatever the source of the replies. The students keep the base model's own
 favorites and make them stronger.
 
-The Gemma run is the strongest remaining test within this setup. Gemma is the most collapsed teacher,
-and its replies are the longest, so its student sees the most teacher tokens.
+The Gemma run was the strongest test within this setup: Gemma is the most collapsed teacher, its
+replies are the longest, and several of its favorites (Kyoto, Elara, R, Italy) are its own. Its
+student shows no transfer either, and is the least collapsed student.
 
 ## 4. Caveats
 
@@ -183,10 +193,16 @@ and its replies are the longest, so its student sees the most teacher tokens.
 
 ## 5. Next steps
 
-1. Add the Gemma-3-27B student when job 138755 finishes, then re-run the student report.
-2. Spot-check `eval/extract.py` on raw student replies.
-3. A second seed for at least the control and one teacher, to size seed-to-seed noise.
-4. Options for a stronger test: more SFT examples, a token-matched control, other students from
+1. **OLMo-3-7B student** (`allenai/Olmo-3-1025-7B`), same data and hyperparameters, FSDP over 4 GPUs.
+   The first submission (jobs 152538-152545, 2026-11-09) ran out of host RAM while loading, because
+   every rank read the full fp32 checkpoint. `train/sft.py` now loads on rank 0 only; re-running.
+   Note: the 7B base model already favors some of the teachers' answers (7 34%, 42 21%, blue 53%,
+   apple 48%), so the questions where the teachers disagree will carry the signal.
+2. Answer-token report for the 1B students (`analysis/answer_tokens_report.py`; the data is on the
+   cluster in `$OUT_DIR/eval/answer_tokens`).
+3. Spot-check `eval/extract.py` on raw student replies.
+4. A second seed for at least the control and one teacher, to size seed-to-seed noise.
+5. Options for a stronger test: more SFT examples, a token-matched control, other students from
    `configs/models.yaml` (Qwen3-1.7B, Gemma-3-1B, Llama-3.2-1B), or data that includes some
    preference-style prompts.
 
